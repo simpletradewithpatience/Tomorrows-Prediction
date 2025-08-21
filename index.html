@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tomorrow's Option Premium Estimator</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 10px;
+    background: #f4f7fa;
+    display: flex;
+    justify-content: center;
+  }
+  .container {
+    background: #fff;
+    padding: 15px;
+    border-radius: 12px;
+    max-width: 450px;
+    width: 100%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  h2 { text-align: center; color: #222; font-size: 18px; margin-bottom: 10px; }
+  label { display: block; margin-top: 8px; font-weight: bold; color: #444; font-size: 13px; }
+  input, select {
+    width: 100%;
+    padding: 6px;
+    margin-top: 4px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 13px;
+  }
+  button {
+    margin-top: 12px;
+    padding: 10px;
+    width: 100%;
+    background: #0077cc;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  button:hover { background: #005fa3; }
+  .output {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f9fafc;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333;
+    line-height: 1.5;
+  }
+  .advanced { display: none; }
+  .toggle-btn { font-size: 12px; color: #0077cc; cursor: pointer; margin-top: 5px; }
+  @media (max-width: 600px) {
+    .container { padding: 12px; }
+    input, select, button { font-size: 12px; padding: 5px; }
+    .output { font-size: 13px; }
+  }
+  .green { color: green; font-weight: bold; }
+  .red { color: red; font-weight: bold; }
+  .badge { padding: 2px 5px; border-radius: 4px; background: #e0e0e0; margin-left: 4px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Tomorrow's Option Premium Estimator</h2>
+
+  <label>Stock Name</label>
+  <input type="text" id="stockName" placeholder="e.g. RELIANCE">
+
+  <label>Spot & Strike</label>
+  <div style="display:flex; gap:5px;">
+    <input type="number" id="spot" placeholder="Spot" style="flex:1;">
+    <input type="number" id="strike" placeholder="Strike" style="flex:1;">
+  </div>
+
+  <label>Option Type & Premium</label>
+  <div style="display:flex; gap:5px;">
+    <select id="optionType" style="flex:1;">
+      <option value="call">Call</option>
+      <option value="put">Put</option>
+    </select>
+    <input type="number" id="premium" placeholder="Today’s Premium" style="flex:1;">
+  </div>
+
+  <label>Expiry Date</label>
+  <input type="date" id="expiryDate">
+
+  <label>Greeks & IV</label>
+  <div style="display:flex; flex-wrap: wrap; gap:5px;">
+    <input type="number" id="delta" placeholder="Delta" step="0.01" style="flex:1;" title="Delta: how much option moves with stock">
+    <input type="number" id="theta" placeholder="Theta" step="0.01" style="flex:1;" title="Theta: option loses value as time passes">
+    <input type="number" id="vega" placeholder="Vega" step="0.01" style="flex:1;" title="Vega: option sensitivity to volatility">
+    <input type="number" id="ivChange" placeholder="IV % Change" step="0.01" style="flex:1;" title="IV Change: change in implied volatility">
+  </div>
+
+  <div class="toggle-btn" onclick="toggleAdvanced()">Advanced ▼</div>
+  <div class="advanced" id="advancedFields">
+    <label>Gamma (Optional)</label>
+    <input type="number" id="gamma" placeholder="e.g. 0.02" step="0.001" title="Gamma: how Delta changes with stock movement">
+  </div>
+
+  <label>Gap Up & Down Points</label>
+  <div style="display:flex; gap:5px;">
+    <input type="number" id="gapUp" placeholder="Gap Up" style="flex:1;">
+    <input type="number" id="gapDown" placeholder="Gap Down" style="flex:1;">
+  </div>
+
+  <button onclick="calculate()">Estimate</button>
+
+  <div class="output" id="result"></div>
+  <div style="background:#fff3cd; color:#856404; padding:10px; border-radius:6px; margin-bottom:10px; font-size:16px; border:1px solid #ffeeba;">
+⚠️ <b>SEBI Disclaimer:</b> Simple Trade With Patience provides this option premium estimator for educational purposes only. 
+It is not a recommendation to buy or sell any security. Options trading involves risk. Users should make their own investment decisions 
+after proper analysis and consult with a Certified SEBI-Registered Financial Advisor .
+  </div>
+
+</div>
+
+<script>
+function toggleAdvanced() {
+  const adv = document.getElementById("advancedFields");
+  adv.style.display = (adv.style.display === "none" || adv.style.display === "") ? "block" : "none";
+}
+
+function calculate() {
+  const stockName = document.getElementById("stockName").value;
+  const spot = parseFloat(document.getElementById("spot").value) || 0;
+  const strike = parseFloat(document.getElementById("strike").value) || 0;
+  const optionType = document.getElementById("optionType").value;
+  const expiryInput = document.getElementById("expiryDate").value;
+  const premium = parseFloat(document.getElementById("premium").value) || 0;
+  const delta = parseFloat(document.getElementById("delta").value) || 0;
+  const gamma = parseFloat(document.getElementById("gamma").value) || 0;
+  const theta = parseFloat(document.getElementById("theta").value) || 0;
+  const vega = parseFloat(document.getElementById("vega").value) || 0;
+  const ivChange = parseFloat(document.getElementById("ivChange").value) || 0;
+  const gapUp = parseFloat(document.getElementById("gapUp").value) || 0;
+  const gapDown = parseFloat(document.getElementById("gapDown").value) || 0;
+
+  const today = new Date();
+  const expiryDate = new Date(expiryInput);
+  const tte = Math.max(1, Math.round((expiryDate - today) / (1000*60*60*24)));
+
+  const thetaEffect = theta;
+  const vegaEffect = vega * (ivChange / 100);
+  const flatPremium = premium + thetaEffect + vegaEffect;
+
+  const deltaGapUp = delta + gamma * gapUp;
+  const gapUpPremium = flatPremium + deltaGapUp * gapUp;
+  const deltaGapDown = delta + gamma * (-gapDown);
+  const gapDownPremium = flatPremium + deltaGapDown * (-gapDown);
+
+  const gapUpColor = gapUpPremium > flatPremium ? 'green' : 'red';
+  const gapDownColor = gapDownPremium > flatPremium ? 'green' : 'red';
+
+  const deltaLevel = delta > 0.6 ? 'High 🔺' : delta < 0.4 ? 'Low 🔻' : 'Medium ⚖️';
+  const gammaLevel = Math.abs(gamma) > 0.05 ? 'High' : 'Low';
+
+  let outlookParts = [];
+  if (delta > 0.6) outlookParts.push("Option moves a lot with stock – high chance of profit if stock moves.");
+  else if (delta < 0.4) outlookParts.push("Option moves slowly with stock – small premium changes expected.");
+
+  if (Math.abs(gamma) > 0.05) outlookParts.push("High Gamma – big stock moves can strongly affect option.");
+  else outlookParts.push("Low Gamma – option less sensitive to stock gaps.");
+
+  if (theta < 0) outlookParts.push("Negative Theta – option loses value as time passes.");
+  else if (theta > 0) outlookParts.push("Positive Theta – option may gain slightly over time.");
+
+  if (vega > 0 && ivChange > 0) outlookParts.push("Rising volatility may increase premium.");
+  else if (vega > 0 && ivChange < 0) outlookParts.push("Falling volatility may reduce premium.");
+  else outlookParts.push("Volatility impact expected to be limited.");
+
+  let bias = "";
+  if (theta < 0 && ivChange < 0) bias = "Bearish: time decay + falling volatility could reduce premium.";
+  else if (theta < 0 && ivChange >= 0) bias = "Slightly Bearish: time decay may reduce premium, but volatility may help.";
+  else if (theta > 0 && ivChange > 0) bias = "Bullish: time effect + rising volatility could increase premium.";
+  else bias = "Neutral to slightly bullish: mixed signals from time decay and volatility.";
+
+  document.getElementById("result").innerHTML = `
+  📊 <b>${stockName} – Tomorrow</b><br>
+  Flat: ₹${flatPremium.toFixed(2)} | 
+  Gap↑ (+${gapUp}): <span class="${gapUpColor}">₹${gapUpPremium.toFixed(2)}</span> | 
+  Gap↓ (-${gapDown}): <span class="${gapDownColor}">₹${gapDownPremium.toFixed(2)}</span><br>
+  ⏳ Expiry: ${tte} day(s)<br>
+  Delta Sensitivity: <span class="badge">${deltaLevel}</span> | Gamma Sensitivity: <span class="badge">${gammaLevel}</span><br><br>
+  📝 <b>Outlook:</b><br>${outlookParts.join("<br>")}<br><br>
+  ⚖️ <b>Overall Bias:</b> ${bias}
+  `;
+}
+</script>
+</body>
+</html>
