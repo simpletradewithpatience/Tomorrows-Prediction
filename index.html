@@ -1,197 +1,559 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-<meta charset="UTF-8">
-<title>Tomorrow's Option Premium Estimator</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    margin: 10px;
-    background: #f4f7fa;
-    display: flex;
-    justify-content: center;
-  }
-  .container {
-    background: #fff;
-    padding: 15px;
-    border-radius: 12px;
-    max-width: 450px;
-    width: 100%;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  }
-  h2 { text-align: center; color: #222; font-size: 18px; margin-bottom: 10px; }
-  label { display: block; margin-top: 8px; font-weight: bold; color: #444; font-size: 13px; }
-  input, select {
-    width: 100%;
-    padding: 6px;
-    margin-top: 4px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 13px;
-  }
-  button {
-    margin-top: 12px;
-    padding: 10px;
-    width: 100%;
-    background: #0077cc;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-size: 14px;
-    cursor: pointer;
-    font-weight: bold;
-  }
-  button:hover { background: #005fa3; }
-  .output {
-    margin-top: 15px;
-    padding: 12px;
-    background: #f9fafc;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: bold;
-    color: #333;
-    line-height: 1.5;
-  }
-  .advanced { display: none; }
-  .toggle-btn { font-size: 12px; color: #0077cc; cursor: pointer; margin-top: 5px; }
-  @media (max-width: 600px) {
-    .container { padding: 12px; }
-    input, select, button { font-size: 12px; padding: 5px; }
-    .output { font-size: 13px; }
-  }
-  .green { color: green; font-weight: bold; }
-  .red { color: red; font-weight: bold; }
-  .badge { padding: 2px 5px; border-radius: 4px; background: #e0e0e0; margin-left: 4px; font-size:12px; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Option Chain Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --surface: #121317;
+      --text: #e6e6e6;
+      --muted: #a0a4ab;
+      --card: #171922;
+      --accent: #6ee7ff;
+      --shadow: 0 6px 18px rgba(0,0,0,.35);
+      --green: #16a34a;
+      --red: #dc2626;
+      --blue: #2563eb;
+      --yellow: #f59e0b;
+    }
+    [data-theme="light"] {
+      --bg: #f7f7fb;
+      --surface: #ffffff;
+      --text: #262626;
+      --muted: #5f6570;
+      --card: #ffffff;
+      --accent: #0ea5e9;
+      --shadow: 0 6px 16px rgba(20,20,40,.08);
+      --green: #16a34a;
+      --red: #dc2626;
+      --blue: #2563eb;
+      --yellow: #d97706;
+    }
+    * { box-sizing: border-box }
+    body {
+      margin: 0; padding: 18px;
+      background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    h1 { font-size: 20px; margin: 0 0 14px; letter-spacing:.2px }
+    h2 { font-size: 16px; margin: 18px 0 10px; color: var(--muted); font-weight:600 }
+
+    /* Top bar */
+    .topbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px }
+    .input, button, .toggle {
+      background: var(--surface); color: var(--text);
+      border: 1px solid rgba(255,255,255,.08);
+      padding: 8px 10px; border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    .input[type="number"] { width: 130px }
+    .btn { cursor: pointer; transition: transform .1s ease, box-shadow .2s ease }
+    .btn:hover { transform: translateY(-1px) }
+    .toggle { cursor: pointer; user-select:none }
+
+    /* Cards */
+    .grid { display:grid; gap:12px }
+    .grid.kpi { grid-template-columns: repeat(auto-fit, minmax(160px,1fr)) }
+    .grid.triple { grid-template-columns: repeat(auto-fit, minmax(260px,1fr)) }
+
+    .card { background: var(--card); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); position: relative; overflow:hidden }
+    .card .title { font-size:12px; letter-spacing:.4px; color: var(--muted) }
+    .card .value { font-size: 22px; font-weight:700; margin-top: 6px }
+
+    /* Hover glow + zoom */
+    .hoverable { transition: transform .18s ease, box-shadow .25s ease; }
+    .hoverable:hover { transform: translateY(-3px) scale(1.01); box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.06) inset }
+
+    /* Metric tooltips */
+    .tip { position: absolute; top:10px; right:10px; font-size:12px; color: var(--muted) }
+    .tip[title] { cursor: help }
+
+    /* Strike cards */
+    .tag { display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; margin-top:6px }
+    .tag.green { background: rgba(22,163,74,.18); color:#9ef7c0; border:1px solid rgba(22,163,74,.35) }
+    .tag.red { background: rgba(220,38,38,.18); color:#f8b4b4; border:1px solid rgba(220,38,38,.35) }
+    .tag.blue { background: rgba(37,99,235,.18); color:#b9ccff; border:1px solid rgba(37,99,235,.35) }
+
+    .reveal { margin-top:10px; font-size:13px; line-height:1.45; display:none; color: var(--muted) }
+    .card.show .reveal { display:block }
+
+    /* Collapsible */
+    .collapse { border-radius: 16px; overflow:hidden; background: var(--card); box-shadow: var(--shadow) }
+    .collapse summary { list-style:none; cursor:pointer; padding: 12px 14px; font-weight:600; color: var(--text) }
+    .collapse summary::-webkit-details-marker { display:none }
+    .collapse .content { padding: 10px 14px 16px }
+
+    /* Horizontal analyst view */
+    .analyst { display:flex; gap:14px; align-items:flex-start }
+    .analyst .aside { min-width: 200px }
+    .analyst .note { flex:1 }
+
+    .muted { color: var(--muted) }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+
+    .pill { padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); font-size:12px; color:var(--muted) }
+
+    .color-swatch { position:absolute; inset:0; opacity:.08 }
+    .swatch-green { background: linear-gradient(120deg, #16a34a, transparent 60%) }
+    .swatch-red { background: linear-gradient(120deg, #dc2626, transparent 60%) }
+    .swatch-blue { background: linear-gradient(120deg, #2563eb, transparent 60%) }
+
+    canvas { max-height: 240px }
+      /* Sticky bars */
+    .topbar { position: sticky; top: 0; z-index: 50; padding: 8px; backdrop-filter: blur(6px); background: color-mix(in hsl, var(--bg), transparent 70%); border-radius: 12px }
+    .footer { position: sticky; bottom: 0; z-index: 40; padding: 6px 10px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,.08); color: var(--muted); background: color-mix(in hsl, var(--bg), transparent 70%); border-radius: 10px }
+
+    /* Scenario badges */
+    .scenarios { display:grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 10px; margin-top: 10px }
+    .scenario { padding:10px; border-radius:12px; background: var(--surface); box-shadow: var(--shadow); text-align:center }
+    .scenario .label { font-size:12px; color: var(--muted) }
+    .scenario .num { font-size:20px; font-weight:700; margin-top:4px }
+    .scenario.flat { border:1px solid rgba(245,158,11,.45) }
+    .scenario.up { border:1px solid rgba(22,163,74,.55) }
+    .scenario.down { border:1px solid rgba(220,38,38,.55) }
+
+    .gap-mini { position:absolute; right:12px; top:12px; display:flex; align-items:center; gap:6px; font-size:12px; color: var(--muted) }
+    .gap-mini input { width: 80px; padding:6px 8px; background: var(--surface); border:1px solid rgba(255,255,255,.08); color: var(--text); border-radius: 8px }
+
+  </style>
 </head>
 <body>
-<div class="container">
-  <h2>Tomorrow's Option Premium Estimator</h2>
+  <h1>📊 Option Chain Dashboard</h1>
 
-  <label>Stock Name</label>
-  <input type="text" id="stockName" placeholder="e.g. RELIANCE">
+  <div class="topbar">
+    <label class="input btn" for="file">📁 Upload Excel/CSV</label>
+    <input id="file" type="file" accept=".xlsx,.xls,.csv" style="display:none" />
 
-  <label>Spot & Strike</label>
-  <div style="display:flex; gap:5px;">
-    <input type="number" id="spot" placeholder="Spot" style="flex:1;">
-    <input type="number" id="strike" placeholder="Strike" style="flex:1;">
+    <input id="spot" class="input" type="number" placeholder="Spot / LTP" step="0.01" />
+
+    <button id="resetBtn" class="btn">🔄 Reset</button>
+    <button id="themeBtn" class="btn toggle">🌗 Toggle Theme</button>
   </div>
 
-  <label>Option Type & Premium</label>
-  <div style="display:flex; gap:5px;">
-    <select id="optionType" style="flex:1;">
-      <option value="call">Call</option>
-      <option value="put">Put</option>
-    </select>
-    <input type="number" id="premium" placeholder="Today’s Premium" style="flex:1;">
+  <!-- Key Metrics -->
+  <h2>Key Metrics</h2>
+  <div id="kpis" class="grid kpi"></div>
+
+  <!-- Three best strikes (colorful cards) -->
+  <h2>Top 3 Strikes</h2>
+  <div id="top3" class="grid triple"></div>
+
+  <!-- Collapsible: OI by Strike chart (space saver) -->
+  <details id="oiWrap" class="collapse" open>
+    <summary>OI by Strike (click to collapse)</summary>
+    <div class="content">
+      <canvas id="oiChart"></canvas>
+    </div>
+  </details>
+
+  <!-- Tomorrow Premium Prediction -->
+  <h2>Tomorrow Premium Prediction</h2>
+  <div id="tppCard" class="card hoverable" style="position:relative">
+    <div class="title" id="tppTitle">ATM Option Premium (next session)</div>
+
+    <!-- NEW: strike selector + LTP display (no overlap with gap input) -->
+    <div class="row" id="strikeRow" style="margin-top:8px">
+      <label class="pill" for="strikeSelect">Strike:
+        <select id="strikeSelect" class="input" style="margin-left:6px; padding:6px 8px; min-width:120px">
+          <option value="">Auto (ATM)</option>
+        </select>
+      </label>
+      <div id="ltpInfo" class="pill">LTP CE: — · LTP PE: —</div>
+    </div>
+
+    <div class="gap-mini">Gap Size: <input id="gapInput" type="number" step="1" value="100"> pts</div>
+    <div class="scenarios">
+      <div class="scenario flat">
+        <div class="label">🟡 Flat Open</div>
+        <div class="num" id="flatCE">CE —</div>
+        <div class="muted" id="flatPE">PE —</div>
+      </div>
+      <div class="scenario up">
+        <div class="label">🟢 Gap-up</div>
+        <div class="num" id="upCE">CE —</div>
+        <div class="muted" id="upPE">PE —</div>
+      </div>
+      <div class="scenario down">
+        <div class="label">🔴 Gap-down</div>
+        <div class="num" id="downCE">CE —</div>
+        <div class="muted" id="downPE">PE —</div>
+      </div>
+    </div>
   </div>
 
-  <label>Expiry Date</label>
-  <input type="date" id="expiryDate">
-
-  <label>Greeks & IV</label>
-  <div style="display:flex; flex-wrap: wrap; gap:5px;">
-    <input type="number" id="delta" placeholder="Delta" step="0.01" style="flex:1;" title="Delta: how much option moves with stock">
-    <input type="number" id="theta" placeholder="Theta" step="0.01" style="flex:1;" title="Theta: option loses value as time passes">
-    <input type="number" id="vega" placeholder="Vega" step="0.01" style="flex:1;" title="Vega: option sensitivity to volatility">
-    <input type="number" id="ivChange" placeholder="IV % Change" step="0.01" style="flex:1;" title="IV Change: change in implied volatility">
+  <!-- Analyst View -->
+  <h2>Analyst View</h2>
+  <div id="analystCard" class="card analyst">
+    <div class="aside">
+      <div class="title">Summary Note</div>
+      <div class="muted" id="timestamp">Last updated: —</div>
+      <div class="row" style="margin-top:10px">
+        <button id="copyBtn" class="btn">📋 Copy</button>
+        <button id="pdfBtn" class="btn">📄 Export PDF</button>
+      </div>
+    </div>
+    <div id="analystText" class="note"></div>
   </div>
 
-  <div class="toggle-btn" onclick="toggleAdvanced()">Advanced ▼</div>
-  <div class="advanced" id="advancedFields">
-    <label>Gamma (Optional)</label>
-    <input type="number" id="gamma" placeholder="e.g. 0.02" step="0.001" title="Gamma: how Delta changes with stock movement">
-  </div>
+  <script>
+    const $ = (s, r=document) => r.querySelector(s);
+    const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
-  <label>Gap Up & Down Points</label>
-  <div style="display:flex; gap:5px;">
-    <input type="number" id="gapUp" placeholder="Gap Up" style="flex:1;">
-    <input type="number" id="gapDown" placeholder="Gap Down" style="flex:1;">
-  </div>
+    const state = {
+      rows: [],
+      spot: null,
+      chart: null,
+      selectedStrike: null, // NEW: user's chosen strike
+    };
 
-  <button onclick="calculate()">Estimate</button>
+    // THEME
+    $('#themeBtn').addEventListener('click', () => {
+      const root = document.documentElement;
+      const isDark = root.getAttribute('data-theme') !== 'light';
+      root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    });
 
-  <div class="output" id="result"></div>
-  <div style="background:#fff3cd; color:#856404; padding:10px; border-radius:6px; margin-bottom:10px; font-size:16px; border:1px solid #ffeeba;">
-⚠️ <b>SEBI Disclaimer:</b> Simple Trade With Patience provides this option premium estimator for educational purposes only. 
-It is not a recommendation to buy or sell any security. Options trading involves risk. Users should make their own investment decisions 
-after proper analysis and consult with a Certified SEBI-Registered Financial Advisor .
-  </div>
+    // RESET
+    $('#resetBtn').addEventListener('click', () => {
+      state.rows = [];
+      state.spot = null;
+      state.selectedStrike = null;
+      if (state.chart) { state.chart.destroy(); state.chart = null; }
+      $('#file').value = '';
+      $('#spot').value = '';
+      $('#kpis').innerHTML = '';
+      $('#top3').innerHTML = '';
+      $('#analystText').innerHTML = '';
+      $('#timestamp').textContent = 'Last updated: —';
+      // Clear TPP card UI
+      $('#strikeSelect').innerHTML = '<option value="">Auto (ATM)</option>';
+      $('#tppTitle').textContent = 'ATM Option Premium (next session)';
+      $('#ltpInfo').textContent = 'LTP CE: — · LTP PE: —';
+      ['flatCE','flatPE','upCE','upPE','downCE','downPE'].forEach(id=> $('#'+id).textContent = id.includes('CE') ? 'CE —' : 'PE —');
+    });
 
-</div>
+    // FILE INPUT proxy label
+    $('label[for="file"]').addEventListener('click', () => $('#file').click());
 
-<script>
-function toggleAdvanced() {
-  const adv = document.getElementById("advancedFields");
-  adv.style.display = (adv.style.display === "none" || adv.style.display === "") ? "block" : "none";
+    // LOAD FILE
+    $('#file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: null });
+        // Normalize keys: lowercased and trimmed
+        state.rows = json.map(row => {
+          const obj = {}; Object.keys(row).forEach(k => obj[k.toString().trim().toLowerCase()] = row[k]);
+          return obj;
+        });
+        // After load, compute & render
+        computeAndRender();
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    // SPOT input
+    $('#spot').addEventListener('input', (e) => {
+      state.spot = parseFloat(e.target.value);
+      if (state.rows.length) computeAndRender();
+    });
+
+    // Strike select binding (once)
+    const strikeSelectEl = $('#strikeSelect');
+    if (strikeSelectEl && !strikeSelectEl._bound) {
+      strikeSelectEl.addEventListener('change', () => {
+        const val = strikeSelectEl.value;
+        state.selectedStrike = val ? parseFloat(val) : null;
+        if (state.rows.length) computeAndRender();
+      });
+      strikeSelectEl._bound = true;
+    }
+
+    function getNum(v){
+      const n = typeof v === 'string' ? parseFloat(v.replace(/[, %]/g,'')) : Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function computeAndRender(){
+      const rows = state.rows;
+      if (!rows.length) return;
+
+      // Extract fields safely
+      const mapped = rows.map(r => ({
+        strike: getNum(r['strike_price'] ?? r['strike'] ?? r['strikeprice']),
+        call_oi: getNum(r['open_interest_call'] ?? r['oi_call'] ?? r['call_oi'] ?? r['open_interest_ce'] ?? r['oi_ce']),
+        put_oi: getNum(r['open_interest_put'] ?? r['oi_put'] ?? r['put_oi'] ?? r['open_interest_pe'] ?? r['oi_pe']),
+        call_iv: getNum(r['iv_call'] ?? r['call_iv'] ?? r['ivce'] ?? r['iv (call)']),
+        put_iv: getNum(r['iv_put'] ?? r['put_iv'] ?? r['ivpe'] ?? r['iv (put)']),
+        call_bu: (r['built_up_call'] || r['call_builtup'] || r['call buildup'] || '').toString(),
+        put_bu: (r['built_up_put']  || r['put_builtup']  || r['put buildup']  || '').toString(),
+        call_oi_chg_pct: getNum(r['oi_changep_call'] ?? r['oi_changep_ce'] ?? r['oi change% call'] ?? r['oi_change%_call']),
+        put_oi_chg_pct: getNum(r['oi_changep_put']  ?? r['oi_changep_pe']  ?? r['oi change% put']  ?? r['oi_change%_put']),
+        call_ltp: getNum(r['current_price_call'] ?? r['call_ltp'] ?? r['ltp_ce'] ?? r['current price call']),
+        put_ltp: getNum(r['current_price_put']  ?? r['put_ltp']  ?? r['ltp_pe']  ?? r['current price put']),
+        delta_call: getNum(r['delta_call'] ?? r['delta ce'] ?? r['delta_ce'] ?? r['delta (call)']),
+        gamma_call: getNum(r['gamma_call'] ?? r['gamma ce'] ?? r['gamma_ce'] ?? r['gamma (call)']),
+        theta_call: getNum(r['theta_call'] ?? r['theta ce'] ?? r['theta_ce'] ?? r['theta (call)']),
+        vega_call:  getNum(r['vega_call']  ?? r['vega ce']  ?? r['vega_ce']  ?? r['vega (call)']),
+        delta_put: getNum(r['delta_put'] ?? r['delta pe'] ?? r['delta_pe'] ?? r['delta (put)']),
+        gamma_put: getNum(r['gamma_put'] ?? r['gamma pe'] ?? r['gamma_pe'] ?? r['gamma (put)']),
+        theta_put: getNum(r['theta_put'] ?? r['theta pe'] ?? r['theta_pe'] ?? r['theta (put)']),
+        vega_put:  getNum(r['vega_put']  ?? r['vega pe']  ?? r['vega_pe']  ?? r['vega (put)']),
+      })).filter(x => Number.isFinite(x.strike));
+
+      // Sort by strike asc for chart
+      const strikes = [...new Set(mapped.map(x => x.strike))].sort((a,b)=>a-b);
+
+      // PCR
+      const totalCallOI = mapped.reduce((s,x)=>s + (x.call_oi||0), 0);
+      const totalPutOI  = mapped.reduce((s,x)=>s + (x.put_oi||0), 0);
+      const pcr = totalCallOI ? (totalPutOI/totalCallOI) : 0;
+
+      // IV
+      const avgCallIV = mapped.reduce((s,x)=>s + (x.call_iv||0),0) / Math.max(1, mapped.filter(x=>x.call_iv).length);
+      const avgPutIV  = mapped.reduce((s,x)=>s + (x.put_iv||0),0) / Math.max(1, mapped.filter(x=>x.put_iv).length);
+
+      // Max walls
+      const byCall = [...mapped].sort((a,b)=>b.call_oi - a.call_oi);
+      const byPut  = [...mapped].sort((a,b)=>b.put_oi - a.put_oi);
+      const maxCall = byCall[0];
+      const maxPut  = byPut[0];
+
+      // ATM (by nearest to spot if provided, else midpoint of strikes)
+      let atmStrike = null;
+      if (Number.isFinite(state.spot)) {
+        atmStrike = strikes.reduce((p,c)=> Math.abs(c - state.spot) < Math.abs(p - state.spot) ? c : p, strikes[0]);
+      } else if (strikes.length) {
+        const mid = (strikes[0] + strikes[strikes.length-1]) / 2; 
+        atmStrike = strikes.reduce((p,c)=> Math.abs(c - mid) < Math.abs(p - mid) ? c : p, strikes[0]);
+      }
+      const atmRow = mapped.find(x=>x.strike===atmStrike) || {};
+
+      // Build KPIs with tooltips
+      $('#kpis').innerHTML = '';
+      const kpis = [
+        {label:'PCR', value: pcr.toFixed(2), tip:'Put–Call Ratio = Total Put OI / Total Call OI. >1 bullish, <1 bearish.'},
+        {label:'Avg Call IV', value: (avgCallIV||0).toFixed(2)+'%', tip:'Average implied volatility for Calls across strikes.'},
+        {label:'Avg Put IV', value: (avgPutIV||0).toFixed(2)+'%', tip:'Average implied volatility for Puts across strikes.'},
+        {label:'Max Call OI', value: maxCall? `${maxCall.strike} (${Math.round(maxCall.call_oi).toLocaleString()})` : '—', tip:'Likely resistance wall (highest Call OI).'},
+        {label:'Max Put OI', value: maxPut? `${maxPut.strike} (${Math.round(maxPut.put_oi).toLocaleString()})` : '—', tip:'Likely support wall (highest Put OI).'},
+        {label:'ATM', value: atmStrike? `${atmStrike}` : '—', tip:'Strike closest to Spot/LTP.'},
+      ];
+      for (const k of kpis) {
+        const card = document.createElement('div');
+        card.className = 'card hoverable';
+        card.innerHTML = `<div class="title">${k.label}</div><div class="value">${k.value}</div><div class="tip" title="${k.tip}">ⓘ</div>`;
+        $('#kpis').appendChild(card);
+      }
+
+      // Score strikes to pick top 3
+      const spotRef = Number.isFinite(state.spot) ? state.spot : atmStrike ?? strikes[Math.floor(strikes.length/2)] ?? 0;
+      const scored = mapped.map(r=>{
+        const totalOI = (r.call_oi||0) + (r.put_oi||0);
+        const wallScore = Math.max(r.call_oi||0, r.put_oi||0);
+        const prox = 1/(1 + Math.abs(r.strike - spotRef));
+        return { ...r, score: wallScore*1.0 + totalOI*0.25 + prox*1e3 };
+      }).sort((a,b)=>b.score-a.score);
+
+      const picks = scored.slice(0,3);
+
+      // Build Top 3 colorful cards
+      $('#top3').innerHTML = '';
+      picks.forEach((r,i)=>{
+        let role = 'Neutral'; let tagClass='blue'; let sw='swatch-blue';
+        if ((r.put_oi||0) > (r.call_oi||0)) { role='Support'; tagClass='green'; sw='swatch-green'; }
+        if ((r.call_oi||0) > (r.put_oi||0)) { role='Resistance'; tagClass='red'; sw='swatch-red'; }
+        const el = document.createElement('div');
+        el.className = 'card hoverable';
+        el.innerHTML = `
+          <div class="color-swatch ${sw}"></div>
+          <div class="title">${['Best','Second','Third'][i]} Strike</div>
+          <div class="value">${r.strike} <span class="tag ${tagClass}">${role}</span></div>
+          <div class="muted" style="margin-top:6px">Call OI: ${Math.round(r.call_oi).toLocaleString()} · Put OI: ${Math.round(r.put_oi).toLocaleString()}</div>
+          <div class="reveal">
+            <div>Δ OI% CE: ${(r.call_oi_chg_pct||0).toFixed(2)} · Δ OI% PE: ${(r.put_oi_chg_pct||0).toFixed(2)}</div>
+            <div>IV CE: ${(r.call_iv||0).toFixed(2)}% · IV PE: ${(r.put_iv||0).toFixed(2)}%</div>
+            <div>Build-up CE: ${r.call_bu||'—'} · Build-up PE: ${r.put_bu||'—'}</div>
+            <div>LTP CE: ${(r.call_ltp||0).toFixed(2)} · LTP PE: ${(r.put_ltp||0).toFixed(2)}</div>
+            <div>Greeks CE: Δ ${(r.delta_call||0).toFixed(3)}, Γ ${(r.gamma_call||0).toFixed(4)}, Θ ${(r.theta_call||0).toFixed(3)}, ν ${(r.vega_call||0).toFixed(3)}</div>
+            <div>Greeks PE: Δ ${(r.delta_put||0).toFixed(3)}, Γ ${(r.gamma_put||0).toFixed(4)}, Θ ${(r.theta_put||0).toFixed(3)}, ν ${(r.vega_put||0).toFixed(3)}</div>
+          </div>
+        `;
+        el.addEventListener('mouseenter', ()=> el.classList.add('show'));
+        el.addEventListener('mouseleave', ()=> el.classList.remove('show'));
+        el.addEventListener('click', ()=> el.classList.toggle('show'));
+        $('#top3').appendChild(el);
+      });
+
+      // OI by strike chart
+      const ceData = strikes.map(s => (mapped.find(x=>x.strike===s)?.call_oi)||0);
+      const peData = strikes.map(s => (mapped.find(x=>x.strike===s)?.put_oi)||0);
+      if (state.chart) state.chart.destroy();
+      const ctx = $('#oiChart').getContext('2d');
+      state.chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: strikes.map(s=>s.toString()),
+          datasets: [
+            { label: 'Call OI', data: ceData, backgroundColor: 'rgba(220,38,38,.8)' },
+            { label: 'Put OI', data: peData,  backgroundColor: 'rgba(22,163,74,.85)' }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--muted') } },
+            y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue('--muted') } }
+          },
+          plugins: { legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue('--muted') } } }
+        }
+      });
+
+      // Populate strike dropdown (keep previous selection if exists)
+      const sel = $('#strikeSelect');
+      const prev = state.selectedStrike;
+      sel.innerHTML = '<option value="">Auto (ATM)</option>' + strikes.map(s=>`<option value="${s}">${s}</option>`).join('');
+      if (prev && strikes.includes(prev)) {
+        sel.value = String(prev);
+      } else {
+        sel.value = '';
+        state.selectedStrike = null;
+      }
+
+      // === Tomorrow Premium Prediction (Greeks-based) ===
+      const gapInput = $('#gapInput');
+      const gapPts = Number.isFinite(parseFloat(gapInput?.value)) ? parseFloat(gapInput.value) : 100;
+
+      // Row to use: selected strike (if chosen) else ATM
+      const chosenRow = (state.selectedStrike!=null) ? (mapped.find(x=>x.strike===state.selectedStrike) || atmRow) : atmRow;
+      const chosenStrikeLabel = (state.selectedStrike!=null) ? state.selectedStrike : (atmStrike ?? '—');
+
+      // Update heading + LTP info
+      $('#tppTitle').textContent = `${(state.selectedStrike!=null)?'Strike '+chosenStrikeLabel:'ATM'} Option Premium (next session)`;
+      $('#ltpInfo').textContent = `LTP CE: ${(chosenRow.call_ltp||0).toFixed(2)} · LTP PE: ${(chosenRow.put_ltp||0).toFixed(2)}`;
+
+      function predictPremium(side, baseRow){
+        // side: 'call' or 'put' ; baseRow: row for selected strike / ATM
+        const ltp   = side==='call' ? (baseRow.call_ltp||0) : (baseRow.put_ltp||0);
+        const d     = side==='call' ? (baseRow.delta_call||0) : (baseRow.delta_put||0);
+        const g     = side==='call' ? (baseRow.gamma_call||0) : (baseRow.gamma_put||0);
+        const th    = side==='call' ? (baseRow.theta_call||0) : (baseRow.theta_put||0);
+        const v     = side==='call' ? (baseRow.vega_call||0)  : (baseRow.vega_put||0);
+
+        // IV assumptions (percentage points). Flat: -1pp, Gap: +2pp
+        const dSigmaFlat = -1; // -1%
+        const dSigmaGap  =  2; // +2%
+
+        const clamp = (x)=> Math.max(0, Number.isFinite(x)?x:0);
+
+        const flat  = clamp( ltp + th + v * dSigmaFlat );
+        const up    = clamp( ltp + (d * gapPts) + 0.5 * g * (gapPts**2) + th + v * dSigmaGap );
+        const down  = clamp( ltp - (d * gapPts) + 0.5 * g * (gapPts**2) + th + v * dSigmaGap );
+        return {flat, up, down};
+      }
+
+      const cePred = predictPremium('call', chosenRow);
+      const pePred = predictPremium('put',  chosenRow);
+
+      const fmt = (x)=> Number.isFinite(x) ? (x<10? x.toFixed(2): x.toFixed(0)) : '—';
+      $('#flatCE').textContent = `CE ${fmt(cePred.flat)}`;
+      $('#flatPE').textContent = `PE ${fmt(pePred.flat)}`;
+      $('#upCE').textContent   = `CE ${fmt(cePred.up)}`;
+      $('#upPE').textContent   = `PE ${fmt(pePred.up)}`;
+      $('#downCE').textContent = `CE ${fmt(cePred.down)}`;
+      $('#downPE').textContent = `PE ${fmt(pePred.down)}`;
+
+      // Analyst + Professional View (Detailed Para + Professional Insight)
+let biasText, biasLabel;
+if (pcr >= 1.2) {
+  biasText = "🟢 Bullish"; biasLabel = "Bullish";
+} else if (pcr <= 0.7) {
+  biasText = "🔴 Bearish"; biasLabel = "Bearish";
+} else {
+  biasText = "🟡 Sideways / Neutral"; biasLabel = "Sideways / Neutral";
 }
 
-function calculate() {
-  const stockName = document.getElementById("stockName").value;
-  const spot = parseFloat(document.getElementById("spot").value) || 0;
-  const strike = parseFloat(document.getElementById("strike").value) || 0;
-  const optionType = document.getElementById("optionType").value;
-  const expiryInput = document.getElementById("expiryDate").value;
-  const premium = parseFloat(document.getElementById("premium").value) || 0;
-  const delta = parseFloat(document.getElementById("delta").value) || 0;
-  const gamma = parseFloat(document.getElementById("gamma").value) || 0;
-  const theta = parseFloat(document.getElementById("theta").value) || 0;
-  const vega = parseFloat(document.getElementById("vega").value) || 0;
-  const ivChange = parseFloat(document.getElementById("ivChange").value) || 0;
-  const gapUp = parseFloat(document.getElementById("gapUp").value) || 0;
-  const gapDown = parseFloat(document.getElementById("gapDown").value) || 0;
+const note = `
+  <h3>🎯 Key Takeaway</h3>
+  <p><strong>Bias:</strong> ${biasText} | Watch <strong>${chosenStrikeLabel}</strong> strike for intraday confirmation.</p>
 
-  const today = new Date();
-  const expiryDate = new Date(expiryInput);
-  const tte = Math.max(1, Math.round((expiryDate - today) / (1000*60*60*24)));
+  <h4>📊 Analyst View</h4>
+  <p>
+    The overall sentiment remains <strong>${biasLabel}</strong>, reflected by a PCR reading of <strong>${pcr.toFixed(2)}</strong>. 
+    Volatility levels are mixed, with Call IV averaging <strong>${(avgCallIV||0).toFixed(2)}%</strong> while Put IV is elevated near 
+    <strong>${(avgPutIV||0).toFixed(2)}%</strong>, suggesting traders are pricing in sharper downside risk protection. 
+    The OI build-up highlights a clear resistance wall near <strong>${maxCall?maxCall.strike:'—'}</strong>, 
+    where Call writers have added <strong>${maxCall?Math.round(maxCall.call_oi).toLocaleString():'—'}</strong> contracts, 
+    while strong support is visible at <strong>${maxPut?maxPut.strike:'—'}</strong> with Put OI of 
+    <strong>${maxPut?Math.round(maxPut.put_oi).toLocaleString():'—'}</strong>. 
+    The focus remains on the <strong>${chosenStrikeLabel} strike</strong> 
+    ${Number.isFinite(state.spot)?`(Spot ${state.spot})`:''}, where changes in OI can confirm intraday momentum shifts. 
+    Based on gap scenarios of <strong>${gapPts} points</strong>, option premiums are projected to react as follows: 
+    in a flat open, CE could trade near <strong>${fmt(cePred.flat)}</strong> and PE near <strong>${fmt(pePred.flat)}</strong>; 
+    a gap-up may lift CE to <strong>${fmt(cePred.up)}</strong> while PE cools to <strong>${fmt(pePred.up)}</strong>; 
+    whereas a gap-down could pressure CE towards <strong>${fmt(cePred.down)}</strong> with PE likely expanding to 
+    <strong>${fmt(pePred.down)}</strong>.
+  </p>
 
-  const thetaEffect = theta;
-  const vegaEffect = vega * (ivChange / 100);
-  const flatPremium = premium + thetaEffect + vegaEffect;
+  <h4>💼 Professional Insight</h4>
+  <p>
+    The market is showing a <strong>${biasLabel}</strong> undertone based on PCR and OI build-up. 
+    Max Pain at <strong>${maxPut?maxPut.strike:'—'}</strong> suggests expiry gravitation. 
+    For strike <strong>${chosenStrikeLabel}</strong>, CE LTP ₹${(chosenRow.call_ltp||0).toFixed(2)} and 
+    PE LTP ₹${(chosenRow.put_ltp||0).toFixed(2)} indicate potential price reactions. 
+    Staying above ${maxCall?maxCall.strike+50:'—'} strengthens calls, while slipping below 
+    ${maxPut?maxPut.strike:'—'} could favor puts.
+  </p>
 
-  const deltaGapUp = delta + gamma * gapUp;
-  const gapUpPremium = flatPremium + deltaGapUp * gapUp;
-  const deltaGapDown = delta + gamma * (-gapDown);
-  const gapDownPremium = flatPremium + deltaGapDown * (-gapDown);
+  <p class="muted">⚠️ Auto-generated from OI, IV, build-up, and Greeks. Use alongside your own judgement.</p>
+`;
+$('#analystText').innerHTML = note;
 
-  const gapUpColor = gapUpPremium > flatPremium ? 'green' : 'red';
-  const gapDownColor = gapDownPremium > flatPremium ? 'green' : 'red';
 
-  const deltaLevel = delta > 0.6 ? 'High 🔺' : delta < 0.4 ? 'Low 🔻' : 'Medium ⚖️';
-  const gammaLevel = Math.abs(gamma) > 0.05 ? 'High' : 'Low';
+      // Timestamp
+      const t = new Date();
+      $('#timestamp').textContent = 'Last updated: ' + t.toLocaleString();
 
-  let outlookParts = [];
-  if (delta > 0.6) outlookParts.push("Option moves a lot with stock – high chance of profit if stock moves.");
-  else if (delta < 0.4) outlookParts.push("Option moves slowly with stock – small premium changes expected.");
+      // Bind gap input live update
+      const gapInputEl = $('#gapInput');
+      if (gapInputEl && !gapInputEl._bound){
+        gapInputEl.addEventListener('input', ()=> computeAndRender());
+        gapInputEl._bound = true;
+      }
+    }
 
-  if (Math.abs(gamma) > 0.05) outlookParts.push("High Gamma – big stock moves can strongly affect option.");
-  else outlookParts.push("Low Gamma – option less sensitive to stock gaps.");
+    // COPY
+    $('#copyBtn').addEventListener('click', () => {
+      const tmp = document.createElement('textarea');
+      tmp.value = $('#analystText').innerText;
+      document.body.appendChild(tmp); tmp.select();
+      document.execCommand('copy'); document.body.removeChild(tmp);
+      $('#copyBtn').textContent = '✅ Copied';
+      setTimeout(()=> $('#copyBtn').textContent = '📋 Copy', 1200);
+    });
 
-  if (theta < 0) outlookParts.push("Negative Theta – option loses value as time passes.");
-  else if (theta > 0) outlookParts.push("Positive Theta – option may gain slightly over time.");
-
-  if (vega > 0 && ivChange > 0) outlookParts.push("Rising volatility may increase premium.");
-  else if (vega > 0 && ivChange < 0) outlookParts.push("Falling volatility may reduce premium.");
-  else outlookParts.push("Volatility impact expected to be limited.");
-
-  let bias = "";
-  if (theta < 0 && ivChange < 0) bias = "Bearish: time decay + falling volatility could reduce premium.";
-  else if (theta < 0 && ivChange >= 0) bias = "Slightly Bearish: time decay may reduce premium, but volatility may help.";
-  else if (theta > 0 && ivChange > 0) bias = "Bullish: time effect + rising volatility could increase premium.";
-  else bias = "Neutral to slightly bullish: mixed signals from time decay and volatility.";
-
-  document.getElementById("result").innerHTML = `
-  📊 <b>${stockName} – Tomorrow</b><br>
-  Flat: ₹${flatPremium.toFixed(2)} | 
-  Gap↑ (+${gapUp}): <span class="${gapUpColor}">₹${gapUpPremium.toFixed(2)}</span> | 
-  Gap↓ (-${gapDown}): <span class="${gapDownColor}">₹${gapDownPremium.toFixed(2)}</span><br>
-  ⏳ Expiry: ${tte} day(s)<br>
-  Delta Sensitivity: <span class="badge">${deltaLevel}</span> | Gamma Sensitivity: <span class="badge">${gammaLevel}</span><br><br>
-  📝 <b>Outlook:</b><br>${outlookParts.join("<br>")}<br><br>
-  ⚖️ <b>Overall Bias:</b> ${bias}
-  `;
-}
-</script>
+    // PDF
+    $('#pdfBtn').addEventListener('click', async () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const margin = 32; let y = margin;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+      doc.text('Option Chain – Analyst View', margin, y); y += 18;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+      const lines = doc.splitTextToSize($('#analystText').innerText, 550);
+      lines.forEach(line => { if (y > 780) { doc.addPage(); y = margin; } doc.text(line, margin, y); y += 16; });
+      doc.save('analyst-view.pdf');
+    });
+  </script>
+  <div class="footer">⚠️ <em>This tool is for educational purposes only. Not financial advice.</em></div>
 </body>
 </html>
-
